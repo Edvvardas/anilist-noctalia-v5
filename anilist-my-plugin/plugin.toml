@@ -1,0 +1,26 @@
+id = "HotZi/anilistTracker"
+name = "Anilist Tracker"
+version = "1.0.0"
+min_noctalia = "0.0.0"
+author = "HotZi"
+icon = "device-tv"
+
+[[widget]]
+id = "animetracker"
+entry = "widget.luau"
+
+  [[widget.setting]]
+  key = "anilist_token"
+  type = "string"
+  label_key = "AniList Access Token"
+  description_key = "Your Personal Access Token generated from AniList settings"
+  default = ""
+
+[[panel]]
+id = "anilistPanel"
+entry = "panel.luau"
+width = 520
+height = 410
+placement = "attached"
+position = "auto"
+    
