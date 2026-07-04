@@ -2,10 +2,14 @@ local enabled = true
 local currentStatus = { "Watching", "Planning", "Completed", "Repeating", "Paused", "Dropped" }
 local selectedIndex = 0;
 
+
+
 -- titles length
 local MAX_CHARS = 50 
 
 local selectedAnimeIndex = 0
+
+
 
 -- map with the names im using
 local statusMap = {
@@ -27,6 +31,45 @@ local animeData = {
 }
 
 local render
+
+-- covers
+
+local COVER_DIR = (noctalia.getenv("XDG_STATE_HOME") or ((noctalia.getenv("HOME") or "") .. "/.local/state")) .. "/noctalia/anilist/covers"
+local COVER_SIZE = 96
+
+local coverPending = {} 
+local coverPaths = {}
+
+
+local function coverCachePath(id)
+    return `{COVER_DIR}/{id}.jpg`
+end
+
+local function downloadCover(id, url)
+    if not url or url == "" then return end
+    if coverPaths[id] ~= nil or coverPending[id] then return end
+
+    local dirOk, dirErr = noctalia.mkdirAll(COVER_DIR)
+    if not dirOk then
+        noctalia.log("AniList: could not create cover cache dir: " .. tostring(dirErr))
+        return
+    end
+
+    coverPending[id] = true
+    local dest = coverCachePath(id)
+    local started = noctalia.download(url, dest, function(success)
+        coverPending[id] = nil
+        if success then
+            coverPaths[id] = dest
+            render()
+        else
+            noctalia.log("AniList: cover download failed for id " .. tostring(id) .. " url " .. tostring(url))
+        end
+    end)
+    if not started then
+        coverPending[id] = nil
+    end
+end
 
 local function restoreSelectionFor(statusName)
     local list = animeData[statusName] or {}
@@ -131,7 +174,8 @@ local function fetchAniList(token)
                           entries {
                             id
                             progress
-                            media { title { english romaji } }
+                            media { title { english romaji } 
+                            coverImage { medium } }
                           }
                         }
                       }
@@ -164,12 +208,15 @@ local function fetchAniList(token)
                                         if #name > MAX_CHARS then
                                             name = string.sub(name, 1, MAX_CHARS - 3) .. "..."
                                         end
-                                        
+
+                                    local cover = entry.media.coverImage and entry.media.coverImage.medium
                                         table.insert(animeData[uiKey], {
                                             id = entry.id,
                                             name = name,
-                                            progress = entry.progress or 0
+                                            progress = entry.progress or 0,
+                                            cover = cover
                                         })
+                                        downloadCover(entry.id, cover)
                                     end
                                 end
                             end
@@ -216,6 +263,30 @@ local function renderList(statusKey)
 
     local selectedItem = list[selectedAnimeIndex + 1]
 
+
+    downloadCover(selectedItem.id, selectedItem.cover)
+
+    local coverPath = coverPaths[selectedItem.id]
+    local coverWidget
+    if coverPath then
+        coverWidget = ui.image({
+            width = COVER_SIZE,
+            height = COVER_SIZE,
+            path = coverPath,
+            fit = "cover",
+            radius = 6,
+        })
+    else
+        coverWidget = ui.box({
+            width = COVER_SIZE,
+            height = COVER_SIZE,
+            fill = "surface_variant",
+            radius = 6,
+        })
+    end
+
+
+
     return ui.column({ gap = 12 }, {
         ui.select({
             options = options,
@@ -223,11 +294,27 @@ local function renderList(statusKey)
             onChange = "onAnimeSelect",
             width = 320,
         }),
+
+        ui.row({ align = "center", gap = 12 }, {
+            coverWidget,
+            ui.column({ gap = 6 }, {
+                ui.label({
+                    text = selectedItem.name,
+                    fontSize = 16,
+                    fontWeight = "bold",
+                }),
+                ui.label({
+                    text = "Progress: " .. tostring(selectedItem.progress) .. " ep",
+                    fontSize = 14,
+                }),
+            }),
+        }),
+
         ui.row({ align = "center", justify = "space_between" }, {
-            ui.label({
+            --[[ui.label({
                 text = selectedItem.name,
                 fontSize = 14,
-            }),
+            }),--]]
             ui.row({ align = "center", gap = 10 }, {
                 ui.button({ glyph = "minus", onClick = "onDecrementSelected" }),
                 ui.label({ text = tostring(selectedItem.progress), fontSize = 14 }),
@@ -291,7 +378,7 @@ function onOpen(context)
     if savedToken and savedToken ~= "" then
         fetchAniList(savedToken)
     else
-        noctalia.notify("Right click the widget icon to set your token :)")
+        noctalia.notify("Middle click the widget icon to set your token :)")
     end
     
     render()
