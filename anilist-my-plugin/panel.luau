@@ -175,6 +175,15 @@ local function fetchAniList(token)
                             id
                             progress
                             media { title { english romaji } 
+                            episodes
+
+                            status
+                            nextAiringEpisode {
+                                episode
+                                airingAt
+                                timeUntilAiring
+                            }
+
                             coverImage { medium } }
                           }
                         }
@@ -214,6 +223,9 @@ local function fetchAniList(token)
                                             id = entry.id,
                                             name = name,
                                             progress = entry.progress or 0,
+                                            episodes = entry.media.episodes or 0,
+                                            status = entry.media.status or "UNKNOWN",
+                                            nextAiringEpisode = entry.media.nextAiringEpisode,
                                             cover = cover
                                         })
                                         downloadCover(entry.id, cover)
@@ -242,6 +254,44 @@ local function header(text)
         ui.label({ text = text, fontSize = 15, fontWeight = "bold", color = "primary" })
     })
 end
+
+
+-- check if the next episode is airing and display it
+local function isEpisodeAiring(text, episodeData)
+    if text ~= "RELEASING" then
+        return nil
+    else
+        return ui.label({
+             text = "Episode: "
+             .. tostring(episodeData.episode) .. " in " 
+             .. tostring(math.floor(episodeData.timeUntilAiring/86400))
+             .. "d " .. tostring(math.floor(episodeData.timeUntilAiring%86400/3600)) .. "h "
+             .. tostring(math.floor(episodeData.timeUntilAiring%86400%3600/60)) .. "m "
+              , fontSize = 14 })
+        
+    end
+end
+
+
+
+
+
+
+local function statusButton(glyph, currentSelectorStatusName)
+    local isActive = (currentStatus[selectedIndex + 1] == currentSelectorStatusName)
+    local variantColour = isActive and "primary" or "outline"
+    return ui.button({
+        glyph = glyph,
+        variant = variantColour
+    })
+
+end
+
+
+
+
+
+
 
 local function renderList(statusKey)
     local list = animeData[statusKey] or {}
@@ -304,20 +354,33 @@ local function renderList(statusKey)
                     fontWeight = "bold",
                 }),
                 ui.label({
-                    text = "Progress: " .. tostring(selectedItem.progress) .. " ep",
+                    text = "Anime Status: " .. tostring(selectedItem.status),
                     fontSize = 14,
                 }),
+                isEpisodeAiring(selectedItem.status, selectedItem.nextAiringEpisode)
+            
             }),
         }),
+        
+
+        ui.label({ text = "Change Status:", fontSize = 14}),
 
         ui.row({ align = "center", justify = "space_between" }, {
-            --[[ui.label({
-                text = selectedItem.name,
-                fontSize = 14,
-            }),--]]
+            
+            ui.row({ align = "center", gap = 6 }, {
+                statusButton("player-play", "Watching"),
+                statusButton("clock", "Planning"),
+                statusButton("checks", "Completed"),
+                statusButton("trash", "Dropped"),
+                statusButton("player-pause", "Paused"),
+                statusButton("repeat", "Repeating"),
+                
+            }),
+           
+
             ui.row({ align = "center", gap = 10 }, {
                 ui.button({ glyph = "minus", onClick = "onDecrementSelected" }),
-                ui.label({ text = tostring(selectedItem.progress), fontSize = 14 }),
+                ui.label({ text = tostring(selectedItem.progress) .. "/" .. tostring(selectedItem.episodes), fontSize = 14 }),
                 ui.button({ glyph = "plus", onClick = "onIncrementSelected" }),
             }),
         }),
