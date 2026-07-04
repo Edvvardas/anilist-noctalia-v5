@@ -11,7 +11,7 @@ local selectedAnimeIndex = 0
 
 
 
--- map with the names im using
+-- maps status enums to ui names and vice versa
 local statusMap = {
     CURRENT   = "Watching",
     PLANNING  = "Planning",
@@ -19,6 +19,15 @@ local statusMap = {
     REPEATING = "Repeating",
     PAUSED    = "Paused",
     DROPPED   = "Dropped"
+}
+
+local reverseStatusMap = {
+    Watching  = "CURRENT",
+    Planning  = "PLANNING",
+    Completed = "COMPLETED",
+    Repeating = "REPEATING",
+    Paused    = "PAUSED",
+    Dropped   = "DROPPED",
 }
 
 local animeData = {
@@ -118,33 +127,71 @@ local function updateAniListProgress(entryId, newProgress)
     end)
 end
 
+
+-- update anime status
+local function updateAniListStatus(entryId, newStatusApiValue)
+    local savedToken = noctalia.state.get("anilist_token")
+    if not savedToken or savedToken == "" then return end
+    local cleanToken = noctalia.string.trim(savedToken)
+
+    local mutationQuery = noctalia.json.encode({
+        query = [[
+        mutation ($id: Int, $status: MediaListStatus) {
+          SaveMediaListEntry (id: $id, status: $status) {
+            id
+            status
+          }
+        }
+        ]],
+        variables = { id = entryId, status = newStatusApiValue }
+    })
+
+    noctalia.http({
+        url = "https://graphql.anilist.co",
+        method = "POST",
+        headers = {
+            "Content-Type: application/json",
+            "Authorization: Bearer " .. cleanToken
+        },
+        body = mutationQuery
+    }, function(res)
+        if not (res and res.ok and res.status == 200) then
+            noctalia.notifyError("AniList Sync Failed", "Could not sync status to your profile.")
+        end
+    end)
+end
+
+
+
 -- increments ep number locally then calls api
 function incrementProgress(entryId)
     for _, statusList in pairs(animeData) do
         for _, item in ipairs(statusList) do
             if item.id == entryId then
+                if item.episodes > 0 and item.progress >= item.episodes then return end
                 item.progress = item.progress + 1
                 updateAniListProgress(item.id, item.progress)
-                render() 
+                render()
                 return
             end
         end
     end
 end
 
--- same thing here
 function decrementProgress(entryId)
     for _, statusList in pairs(animeData) do
         for _, item in ipairs(statusList) do
             if item.id == entryId then
+                if item.progress <= 0 then return end
                 item.progress = item.progress - 1
                 updateAniListProgress(item.id, item.progress)
-                render() 
+                render()
                 return
             end
         end
     end
 end
+
 
 
 local function fetchAniList(token)
@@ -176,7 +223,6 @@ local function fetchAniList(token)
                             progress
                             media { title { english romaji } 
                             episodes
-
                             status
                             nextAiringEpisode {
                                 episode
@@ -258,7 +304,7 @@ end
 
 -- check if the next episode is airing and display it
 local function isEpisodeAiring(text, episodeData)
-    if text ~= "RELEASING" then
+    if text ~= "RELEASING" or not episodeData then
         return nil
     else
         return ui.label({
@@ -273,24 +319,44 @@ local function isEpisodeAiring(text, episodeData)
 end
 
 
+local function changeSelectedAnimeStatus(newStatusName)
+    local currentStatusName = currentStatus[selectedIndex + 1]
+    if newStatusName == currentStatusName then return end -- no-op if same tab
 
+    local list = animeData[currentStatusName]
+    local item = list and list[selectedAnimeIndex + 1]
+    if not item then return end
 
+    table.remove(list, selectedAnimeIndex + 1)
+    table.insert(animeData[newStatusName], item)
 
+    updateAniListStatus(item.id, reverseStatusMap[newStatusName])
+
+    selectedAnimeIndex = math.min(selectedAnimeIndex, math.max(#list - 1, 0))
+
+    noctalia.state.set("anilist_selected_id_" .. newStatusName, item.id)
+
+    render()
+end
+
+local statusButtonHandlers = {
+    Watching  = "onSetStatusWatching",
+    Planning  = "onSetStatusPlanning",
+    Completed = "onSetStatusCompleted",
+    Repeating = "onSetStatusRepeating",
+    Paused    = "onSetStatusPaused",
+    Dropped   = "onSetStatusDropped",
+}
 
 local function statusButton(glyph, currentSelectorStatusName)
     local isActive = (currentStatus[selectedIndex + 1] == currentSelectorStatusName)
     local variantColour = isActive and "primary" or "outline"
     return ui.button({
         glyph = glyph,
-        variant = variantColour
+        variant = variantColour,
+        onClick = statusButtonHandlers[currentSelectorStatusName],
     })
-
 end
-
-
-
-
-
 
 
 local function renderList(statusKey)
@@ -394,6 +460,7 @@ local function renderRepeating() return renderList("Repeating") end
 local function renderPaused()    return renderList("Paused") end
 local function renderDropped()   return renderList("Dropped") end
 
+
 function render()
   local currentStatusName = currentStatus[selectedIndex + 1]
   local contentScroller
@@ -487,4 +554,25 @@ end
 
 function onCloseClicked() 
     panel.close() 
+end
+
+
+
+function onSetStatusWatching()  
+    changeSelectedAnimeStatus("Watching")
+end
+function onSetStatusPlanning()
+    changeSelectedAnimeStatus("Planning")
+end
+function onSetStatusCompleted()
+    changeSelectedAnimeStatus("Completed")
+end
+function onSetStatusRepeating()
+    changeSelectedAnimeStatus("Repeating")
+end
+function onSetStatusPaused()
+    changeSelectedAnimeStatus("Paused")
+end
+function onSetStatusDropped()
+    changeSelectedAnimeStatus("Dropped")
 end

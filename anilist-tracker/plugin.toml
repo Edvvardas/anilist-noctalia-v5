@@ -1,6 +1,6 @@
 id = "HotZi/anilistTracker"
 name = "Anilist Tracker"
-version = "1.0.3"
+version = "1.0.4"
 min_noctalia = "5.0.0"
 author = "HotZi"
 icon = "device-tv"
