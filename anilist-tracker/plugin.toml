@@ -23,4 +23,13 @@ width = 520
 height = 360
 placement = "attached"
 position = "auto"
+
+
+[[panel]]
+id = "activityPanel"
+entry = "activity.luau"
+width = 520
+height = 360
+placement = "attached"
+position = "auto"
     

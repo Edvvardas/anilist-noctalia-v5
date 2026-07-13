@@ -7,6 +7,7 @@ An [AniList](https://anilist.co) anime tracking plugin for [Noctalia](https://gi
 ## Features
 
 - Browse all six AniList list statuses: Watching, Planning, Completed, Repeating, Paused, and Dropped
+- Browse friends activity
 - Cover art fetched and cached locally for each entry
 - Live countdown to the next airing episode for currently releasing anime
 - Increment or decrement episode progress with a click, synced straight to your AniList profile

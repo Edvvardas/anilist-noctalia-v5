@@ -486,7 +486,10 @@ function render()
   panel.render(ui.column({ flexGrow = 1, gap = 12, align = "stretch" }, {
     ui.row({ align = "stretch", justify = "space_between" }, {
       ui.select({ options = currentStatus, selectedIndex = selectedIndex, onChange = "onToggle", width = 320}),
-      ui.button({ glyph = "close", onClick = "onCloseClicked" }),
+       ui.row({justify = "space_between", gap = 10 }, {
+            ui.button({ glyph = "activity", onClick = "goToActivity" }),
+            ui.button({ glyph = "close", onClick = "onCloseClicked" }),
+      }),
     }),
 
     header(`{currentStatusName} ({#entries})`),
@@ -556,6 +559,9 @@ function onCloseClicked()
     panel.close() 
 end
 
+function goToActivity()
+    noctalia.togglePanel("HotZi/anilistTracker:activityPanel")
+end
 
 
 function onSetStatusWatching()  
