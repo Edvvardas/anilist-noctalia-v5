@@ -319,9 +319,16 @@ local function isEpisodeAiring(text, episodeData)
 end
 
 
+local function findStatusIndex(name)
+    for i, s in ipairs(currentStatus) do
+        if s == name then return i - 1 end
+    end
+    return nil
+end
+
 local function changeSelectedAnimeStatus(newStatusName)
     local currentStatusName = currentStatus[selectedIndex + 1]
-    if newStatusName == currentStatusName then return end -- no-op if same tab
+    if newStatusName == currentStatusName then return end 
 
     local list = animeData[currentStatusName]
     local item = list and list[selectedAnimeIndex + 1]
@@ -332,8 +339,18 @@ local function changeSelectedAnimeStatus(newStatusName)
 
     updateAniListStatus(item.id, reverseStatusMap[newStatusName])
 
+ 
     selectedAnimeIndex = math.min(selectedAnimeIndex, math.max(#list - 1, 0))
+    local remaining = list[selectedAnimeIndex + 1]
+    noctalia.state.set("anilist_selected_id_" .. currentStatusName, remaining and remaining.id or nil)
 
+    local newIndex = findStatusIndex(newStatusName)
+    if newIndex then
+        selectedIndex = newIndex
+        noctalia.state.set("anilist_selected_status", selectedIndex)
+    end
+
+    selectedAnimeIndex = math.max(#animeData[newStatusName] - 1, 0)
     noctalia.state.set("anilist_selected_id_" .. newStatusName, item.id)
 
     render()
