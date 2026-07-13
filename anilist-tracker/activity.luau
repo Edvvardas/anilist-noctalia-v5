@@ -248,6 +248,8 @@ local function renderActivityFeed()
         local coverId = activity.media.id or activity.id
         local coverPath = coverPaths[coverId]
 
+        local progressText = activity.progress and (" " .. activity.progress) or ""
+
         local coverWidget
         if coverPath then
             coverWidget = ui.image({
@@ -275,10 +277,11 @@ local function renderActivityFeed()
         align = "center",
         }, {
 
+        
         ui.row({ align = "center", gap = 10 }, {
             coverWidget,
             ui.label({
-                text = activity.user.name .. " " .. activity.status .. ":" .. "\n" .. trimmedTitle,
+                text = activity.user.name .. " " .. activity.status .. progressText .. ":" .. "\n" .. trimmedTitle,
             }),
         }),
 
