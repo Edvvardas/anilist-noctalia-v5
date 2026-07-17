@@ -162,6 +162,93 @@ local function updateAniListStatus(entryId, newStatusApiValue)
 end
 
 
+-- update anime score
+local function updateAniListScore(entryId, newScore)
+    local savedToken = noctalia.state.get("anilist_token")
+    if not savedToken or savedToken == "" then return end
+    local cleanToken = noctalia.string.trim(savedToken)
+
+    local mutationQuery = noctalia.json.encode({
+        query = [[
+        mutation ($id: Int, $score: Float) {
+          SaveMediaListEntry (id: $id, score: $score) {
+            id
+            status
+            score
+          }
+        }
+        ]],
+        variables = { id = entryId, score = newScore }
+    })
+
+    noctalia.http({
+        url = "https://graphql.anilist.co",
+        method = "POST",
+        headers = {
+            "Content-Type: application/json",
+            "Authorization: Bearer " .. cleanToken
+        },
+        body = mutationQuery
+    }, function(res)
+        if not (res and res.ok and res.status == 200) then
+            noctalia.notifyError("AniList Sync Failed", "Could not sync score to your profile.")
+
+        elseif (res and res.ok and res.status== 200) then
+            noctalia.notify("Updated status succesfully")
+        end
+    end)
+end
+
+-- rate anime
+
+local buffer = ""
+local idleTicks = 0
+local dirty = false
+local pendingEntryId = nil
+
+
+function rateAnime(entryId, rating)
+    for _, statusList in pairs(animeData) do
+        for _, item in ipairs(statusList) do
+            if item.id == entryId then
+                item.score = rating
+                updateAniListScore(item.id, item.score)
+                render()
+                return
+            end
+        end
+    end
+end
+
+
+function animeRatingInput(entryId)
+    pendingEntryId = entryId
+    return ui.row({ align = "center", gap = 6 }, {
+        ui.label({ text = "⭐" }),
+        ui.input({onSubmit = "onSubmitString"}),
+    })
+end
+
+
+
+ 
+function onSubmitString(value)
+    buffer = value
+    idleTicks = 0
+    dirty = true
+
+    local rating = tonumber(value)
+    if rating and pendingEntryId then
+        rateAnime(pendingEntryId, rating)
+        pendingEntryId = nil
+    else
+        noctalia.notify("Invalid rating", "Please enter a number.")
+    end
+
+    render()
+end
+
+
 
 -- increments ep number locally then calls api
 function incrementProgress(entryId)
@@ -177,6 +264,7 @@ function incrementProgress(entryId)
         end
     end
 end
+
 
 function decrementProgress(entryId)
     for _, statusList in pairs(animeData) do
@@ -221,6 +309,7 @@ local function fetchAniList(token)
                           entries {
                             id
                             progress
+                            score
                             media { title { english romaji } 
                             episodes
                             status
@@ -272,7 +361,8 @@ local function fetchAniList(token)
                                             episodes = entry.media.episodes or 0,
                                             status = entry.media.status or "UNKNOWN",
                                             nextAiringEpisode = entry.media.nextAiringEpisode,
-                                            cover = cover
+                                            cover = cover,
+                                            score = entry.score or 0
                                         })
                                         downloadCover(entry.id, cover)
                                     end
@@ -316,6 +406,15 @@ local function isEpisodeAiring(text, episodeData)
               , fontSize = 14 })
         
     end
+end
+
+local function isAnimeRated(myRating)
+    if (tonumber(myRating) == 0) then
+        return ui.label({text = "Not rated yet"})
+    else
+        return ui.label({text = "Your score: " .. myRating})
+    end
+            
 end
 
 
@@ -440,13 +539,22 @@ local function renderList(statusKey)
                     text = "Anime Status: " .. tostring(selectedItem.status),
                     fontSize = 14,
                 }),
-                isEpisodeAiring(selectedItem.status, selectedItem.nextAiringEpisode)
-            
+                isEpisodeAiring(selectedItem.status, selectedItem.nextAiringEpisode),
+                isAnimeRated(selectedItem.score)
+
             }),
         }),
         
 
+        ui.row({ align = "center", justify = "space_between" }, {
+
         ui.label({ text = "Change Status:", fontSize = 14}),
+        
+
+        animeRatingInput(selectedItem.id),
+
+
+        }),
 
         ui.row({ align = "center", justify = "space_between" }, {
             
@@ -459,6 +567,7 @@ local function renderList(statusKey)
                 statusButton("repeat", "Repeating"),
                 
             }),
+           
            
 
             ui.row({ align = "center", gap = 10 }, {

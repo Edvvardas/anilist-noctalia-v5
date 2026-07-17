@@ -1,6 +1,7 @@
 id = "HotZi/anilistTracker"
 name = "Anilist Tracker"
 version = "1.0.4"
+plugin_api = 3
 min_noctalia = "5.0.0"
 author = "HotZi"
 icon = "device-tv"
@@ -20,7 +21,7 @@ entry = "widget.luau"
 id = "anilistPanel"
 entry = "panel.luau"
 width = 520
-height = 360
+height = 370
 placement = "attached"
 position = "auto"
 
@@ -29,7 +30,7 @@ position = "auto"
 id = "activityPanel"
 entry = "activity.luau"
 width = 520
-height = 360
+height = 370
 placement = "attached"
 position = "auto"
     
