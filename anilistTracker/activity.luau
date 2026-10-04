@@ -203,7 +203,7 @@ end
 local function loadActivityPage()
     local savedToken = noctalia.state.get("anilist_token")
     if not savedToken or savedToken == "" then
-        noctalia.notify("Middle click the widget icon to set your token :)")
+        noctalia.notify("AniList", "Open the Anilist panel and click Log in with AniList")
         return
     end
 

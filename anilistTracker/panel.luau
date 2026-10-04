@@ -41,6 +41,10 @@ local animeData = {
 
 local render
 
+-- set when there is no token or AniList rejects the saved one
+local needsLogin = false
+local panelOpen = false
+
 -- covers
 
 local COVER_DIR = (noctalia.getenv("XDG_STATE_HOME") or ((noctalia.getenv("HOME") or "") .. "/.local/state")) .. "/noctalia/anilist/covers"
@@ -378,8 +382,12 @@ local function fetchAniList(token)
             else
                 noctalia.notifyError("AniList Error", "Could not resolve account profile name.")
             end
+        elseif res and (res.status == 400 or res.status == 401) then
+            -- expired or revoked token
+            needsLogin = true
+            render()
         else
-            noctalia.notifyError("AniList Sync Failed", "Check your token in widget settings!")
+            noctalia.notifyError("AniList Sync Failed", "Could not reach AniList.")
         end
     end)
 end
@@ -587,7 +595,45 @@ local function renderPaused()    return renderList("Paused") end
 local function renderDropped()   return renderList("Dropped") end
 
 
+local function renderLogin()
+  local status = noctalia.state.get("anilist_login_status") or ""
+  local waiting = status == "waiting"
+  local errorText = string.match(status, "^error:(.*)$")
+
+  local message = "Connect your AniList account to see your lists."
+  if waiting then
+    message = "Approve the app in your browser…"
+  elseif errorText then
+    message = "Login failed: " .. errorText
+  end
+
+  panel.render(ui.column({ flexGrow = 1, gap = 12, align = "stretch" }, {
+    ui.row({ align = "center", justify = "space_between" }, {
+      header("Anilist Tracker"),
+      ui.button({ glyph = "close", onClick = "onCloseClicked" }),
+    }),
+    ui.column({ flexGrow = 1, gap = 14, align = "center", justify = "center" }, {
+      ui.glyph({ name = "device-tv", size = 40, color = "primary" }),
+      ui.label({ text = message, fontSize = 14 }),
+      ui.button({
+        glyph = "login",
+        text = waiting and "Waiting for browser…" or "Log in with AniList",
+        variant = "primary",
+        onClick = "onLoginClicked",
+      }),
+    }),
+  }))
+end
+
 function render()
+  if not panelOpen then return end
+
+  local savedToken = noctalia.state.get("anilist_token")
+  if needsLogin or not savedToken or savedToken == "" then
+    renderLogin()
+    return
+  end
+
   local currentStatusName = currentStatus[selectedIndex + 1]
   local contentScroller
   
@@ -614,6 +660,7 @@ function render()
       ui.select({ options = currentStatus, selectedIndex = selectedIndex, onChange = "onToggle", width = 320}),
        ui.row({justify = "space_between", gap = 10 }, {
             ui.button({ glyph = "activity", onClick = "goToActivity" }),
+            ui.button({ glyph = "logout", onClick = "onLogoutClicked" }),
             ui.button({ glyph = "close", onClick = "onCloseClicked" }),
       }),
     }),
@@ -626,20 +673,50 @@ function render()
   }))
 end
 
-function onOpen(context) 
+-- the widget runs the login and stores the token; refresh when it lands
+noctalia.state.watch("anilist_token", function(token)
+    if token and token ~= "" then
+        needsLogin = false
+        if panelOpen then fetchAniList(token) end
+    end
+    render()
+end)
+
+noctalia.state.watch("anilist_login_status", function()
+    render()
+end)
+
+function onOpen(context)
+    panelOpen = true
+
     local savedStatus = noctalia.state.get("anilist_selected_status")
     if savedStatus ~= nil then
         selectedIndex = tonumber(savedStatus) or 0
     end
 
     local savedToken = noctalia.state.get("anilist_token")
-    
+
     if savedToken and savedToken ~= "" then
         fetchAniList(savedToken)
-    else
-        noctalia.notify("Middle click the widget icon to set your token :)")
     end
-    
+
+    render()
+end
+
+function onClose()
+    panelOpen = false
+end
+
+function onLoginClicked()
+    if noctalia.state.get("anilist_login_status") == "waiting" then return end
+    -- any new value wakes the widget's watcher
+    noctalia.state.set("anilist_login_request", tostring(os.time()) .. "-" .. tostring(os.clock()))
+end
+
+function onLogoutClicked()
+    noctalia.state.set("anilist_token", "")
+    for k in pairs(animeData) do animeData[k] = {} end
+    needsLogin = true
     render()
 end
 

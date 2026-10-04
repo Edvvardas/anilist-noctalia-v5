@@ -1,12 +1,13 @@
 id = "HotZi/anilistTracker"
 name = "Anilist Tracker"
-version = "1.0.4"
+version = "1.0.5"
 plugin_api = 3
 min_noctalia = "5.0.0"
 author = "HotZi"
 icon = "device-tv"
 description = "Track your AniList anime from the bar, with a list panel and an activity feed."
 tags = ["media", "bar", "panel"]
+dependencies = ["python3", "xdg-open"]
 
 [[widget]]
 id = "animetracker"
@@ -16,7 +17,7 @@ entry = "widget.luau"
   key = "anilist_token"
   type = "string"
   label_key = "AniList Access Token"
-  description_key = "Your Personal Access Token generated from AniList settings"
+  description_key = "Optional. Leave empty and use Log in with AniList in the panel instead."
   default = ""
 
 [[panel]]

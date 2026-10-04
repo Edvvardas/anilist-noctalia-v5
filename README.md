@@ -17,23 +17,28 @@ An [AniList](https://anilist.co) anime tracking plugin for [Noctalia](https://gi
 ## Requirements
 
 - Noctalia `>= 5.0.0`
-- An AniList account and a [Personal Access Token](https://anilist.co/settings/developer)
+- An AniList account
+- `python3` and `xdg-open` (used for the one-time browser login)
 
 ## Installation
 
-1. Copy the plugin folder into your Noctalia plugins directory located at ~/.local/share/noctalia/plugins/
-2. Reload Noctalia (or restart it) so the widget is picked up.
+1. In Noctalia's plugin settings, add this repository as a plugin source:
+   `https://github.com/Edvvardas/anilist-noctalia-v5`
+2. Find **Anilist Tracker** in the plugin list and click **Add to Noctalia**.
 3. Add the **Anilist Tracker** widget to your bar.
 
 ## Setup
 
-1. Generate a Personal Access Token from your [AniList Developer settings](https://anilist.co/settings/developer).
-2. Middle-click the widget icon, or open its settings, and paste the token into the **AniList Access Token** field.
-3. Click the widget to open the panel — your lists will sync automatically.
-4. With your Client ID from step 1, open the following URL in your browser (replace `YOUR_CLIENT_ID`):
-   ```
-   https://anilist.co/api/v2/oauth/authorize?client_id=YOUR_CLIENT_ID&response_type=token
-   ```
+1. Click the widget to open the panel.
+2. Click **Log in with AniList**. Your browser opens the AniList approval page.
+3. Click **Approve**. The browser shows "Connected to AniList" and your lists load in the panel.
+
+The login lasts about a year. When it expires the panel shows the login button again.
+Use the log out button in the panel header to switch accounts.
+
+Prefer not to use the browser login? Paste a token into the widget's **AniList Access Token**
+setting instead.
+
 ## Usage
 
 - Click the bar widget to open the tracker panel.
