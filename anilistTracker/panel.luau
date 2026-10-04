@@ -325,7 +325,7 @@ local function renderSelected(list)
             ui.label({ text = "Change Status:", fontSize = 14 }),
             ui.row({ align = "center", gap = 6 }, {
                 ui.label({ text = "⭐" }),
-                ui.input({ key = `score-{anime.id}`, placeholder = "Score", onSubmit = setScore }),
+                ui.input({ key = `score-{anime.id}`, placeholder = "Score", width = 80, onSubmit = setScore }),
             }),
         }),
 
