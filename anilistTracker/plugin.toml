@@ -1,7 +1,7 @@
 id = "HotZi/anilistTracker"
 name = "Anilist Tracker"
-version = "1.1.0"
-plugin_api = 3
+version = "1.1.1"
+plugin_api = 9
 min_noctalia = "5.0.0"
 author = "HotZi"
 icon = "device-tv"
@@ -16,8 +16,8 @@ entry = "widget.luau"
   [[widget.setting]]
   key = "anilist_token"
   type = "string"
-  label_key = "AniList Access Token"
-  description_key = "Optional. Leave empty and use Log in with AniList in the panel instead."
+  label_key = "settings.anilist_token.label"
+  description_key = "settings.anilist_token.description"
   default = ""
 
 [[panel]]

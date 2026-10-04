@@ -1,0 +1,8 @@
+{
+  "settings": {
+    "anilist_token": {
+      "label": "AniList Access Token",
+      "description": "Optional. Leave empty and use Log in with AniList in the panel instead."
+    }
+  }
+}

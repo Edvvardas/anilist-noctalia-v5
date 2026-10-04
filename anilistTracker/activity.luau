@@ -1,370 +1,203 @@
-local activities = {}
-local activityPage = 1
-
-
-
-local ACTIVITY_QUERY = [[
-    query ($page: Int) {
-        Page(page: $page, perPage: 20) {
-            activities(
-                type: ANIME_LIST
-                sort: ID_DESC
-                isFollowing: true
-            ) {
-                ... on ListActivity {
-                    id
-                    status
-                    progress
-                    createdAt
-                    isLiked
-                    likeCount
-                    media {
-                        title { english romaji }
-                        coverImage { medium }
-                    }
-                    user {
-                        name
-                    }
-                }
-            }
-        }
-    }
-]]
-
+-- Activity panel: list updates from people you follow, with likes.
 
 local render
 
-
-
-local COVER_DIR = (noctalia.getenv("XDG_STATE_HOME") or ((noctalia.getenv("HOME") or "") .. "/.local/state")) .. "/noctalia/anilist/covers"
+local MAX_TITLE_CHARS = 40
 local COVER_SIZE = 40
+local COVER_DIR = (noctalia.getenv("XDG_STATE_HOME") or ((noctalia.getenv("HOME") or "") .. "/.local/state"))
+    .. "/noctalia/anilist/covers/media"
 
-local coverPending = {}
-local coverPaths = {}
+local LIST_PANEL = "HotZi/anilistTracker:anilistPanel"
 
-
-local function coverCachePath(id)
-    return `{COVER_DIR}/{id}.jpg`
-end
-
-
-local function downloadCover(id, url)
-    if not url or url == "" then return end
-    if coverPaths[id] ~= nil or coverPending[id] then return end
-
-    local dirOk, dirErr = noctalia.mkdirAll(COVER_DIR)
-    if not dirOk then
-        noctalia.log("AniList: could not create cover cache dir: " .. tostring(dirErr))
-        return
-    end
-
-    coverPending[id] = true
-    local dest = coverCachePath(id)
-    local started = noctalia.download(url, dest, function(success)
-        coverPending[id] = nil
-        if success then
-            coverPaths[id] = dest
-            render()
-        else
-            noctalia.log("AniList: cover download failed for id " .. tostring(id) .. " url " .. tostring(url))
-        end
-    end)
-    if not started then
-        coverPending[id] = nil
-    end
-end
-
-
-function toggleAniListLike(entryId)
-    local savedToken = noctalia.state.get("anilist_token")
-    if not savedToken or savedToken == "" then return end
-    local cleanToken = noctalia.string.trim(savedToken)
-
-    local targetActivity = nil
-    for _, activity in ipairs(activities) do
-        if activity.id == entryId then
-            targetActivity = activity
-            break
-        end
-    end
-
-    local previousLikedState = nil
-    local previousLikeCount = nil
-
-    if targetActivity then
-        previousLikedState = targetActivity.isLiked
-        previousLikeCount = targetActivity.likeCount or 0
-
-        targetActivity.isLiked = not targetActivity.isLiked
-
-        if targetActivity.isLiked then
-            targetActivity.likeCount = previousLikeCount + 1
-        else
-            targetActivity.likeCount = math.max(previousLikeCount - 1, 0)
-        end
-
-        render()
-    end
-
-    local mutationQuery = noctalia.json.encode({
-        query = [[
-        mutation ($id: Int, $type: LikeableType) {
-          ToggleLike(id: $id, type: $type) {
-            id
-          }
-        }
-        ]],
-        variables = {
-            id = entryId,
-            type = "ACTIVITY"
-        }
-    })
-
-    noctalia.http({
-        url = "https://graphql.anilist.co",
-        method = "POST",
-        headers = {
-            "Content-Type: application/json",
-            "Authorization: Bearer " .. cleanToken
-        },
-        body = mutationQuery
-    }, function(res)
-        if not (res and res.ok and res.status == 200) then
-            local statusText = res and tostring(res.status) or "no response"
-            local bodyText = res and res.body or ""
-
-            local errorMessage = nil
-            if res and res.body then
-                local ok, parsedError = pcall(noctalia.json.decode, res.body)
-                if ok and parsedError and parsedError.errors and parsedError.errors[1] then
-                    errorMessage = parsedError.errors[1].message
-                end
-            end
-
-            noctalia.notifyError(
-                "AniList Interaction Failed",
-                "Status: " .. statusText .. " - " .. (errorMessage or bodyText or "unknown error")
-            )
-
-            if targetActivity then
-                targetActivity.isLiked = previousLikedState
-                targetActivity.likeCount = previousLikeCount
-                render()
-            end
-            return
-        end
-    end)
-end
-
-
-function onLikeAt(index)
-    local activity = activities[index + 1]
-    if not activity then return end
-    toggleAniListLike(activity.id)
-end
-
-
-local likeCallbackNames = {
-    "onLike0", "onLike1", "onLike2", "onLike3", "onLike4",
-    "onLike5", "onLike6", "onLike7", "onLike8", "onLike9",
-    "onLike10", "onLike11", "onLike12", "onLike13", "onLike14",
-    "onLike15", "onLike16", "onLike17", "onLike18", "onLike19",
+local ACTIVITY_QUERY = [[
+query ($page: Int) {
+  Page(page: $page, perPage: 20) {
+    activities(type: ANIME_LIST, sort: ID_DESC, isFollowing: true) {
+      ... on ListActivity {
+        id
+        status
+        progress
+        isLiked
+        likeCount
+        media { id title { english romaji } coverImage { medium } }
+        user { name }
+      }
+    }
+  }
 }
+]]
 
+local TOGGLE_LIKE = [[
+mutation ($id: Int) {
+  ToggleLike(id: $id, type: ACTIVITY) { id }
+}
+]]
 
-local function fetchAniListGraphQL(token, query, variables, callback)
-    local cleanToken = noctalia.string.trim(token)
+local activities = {}
+local page = 1
 
-    local body = noctalia.json.encode({
-        query = query,
-        variables = variables or {},
-    })
+local coverPaths = {}
+local coverPending = {}
 
+-- ── helpers ──────────────────────────────────────────────────────────────────
+
+local function truncate(text, maxChars)
+    if #text <= maxChars then return text end
+    return string.sub(text, 1, maxChars - 3) .. "..."
+end
+
+local function savedToken()
+    local token = noctalia.state.get("anilist_token")
+    if type(token) ~= "string" then return nil end
+    token = noctalia.string.trim(token)
+    return token ~= "" and token or nil
+end
+
+-- POSTs a GraphQL request with the saved token; callback(data, res) gets nil
+-- data on any failure.
+local function gql(query, variables, callback)
     noctalia.http({
         url = "https://graphql.anilist.co",
         method = "POST",
         headers = {
             "Content-Type: application/json",
-            "Authorization: Bearer " .. cleanToken,
+            "Authorization: Bearer " .. (savedToken() or ""),
         },
-        body = body,
+        body = noctalia.json.encode({ query = query, variables = variables }),
     }, function(res)
-        if not (res and res.ok and res.status == 200) then
-            if callback then callback(nil, res) end
-            return
-        end
-
-        local parsed = noctalia.json.decode(res.body)
-        if callback then callback(parsed, res) end
+        local parsed = res and res.ok and res.status == 200 and noctalia.json.decode(res.body)
+        callback(parsed and parsed.data or nil, res)
     end)
 end
 
+local function cover(mediaId, url)
+    if url and url ~= "" and coverPaths[mediaId] == nil and not coverPending[mediaId] then
+        local path = `{COVER_DIR}/{mediaId}.jpg`
+        if noctalia.fileExists(path) then
+            coverPaths[mediaId] = path
+        else
+            noctalia.mkdirAll(COVER_DIR)
+            coverPending[mediaId] = true
+            noctalia.download(url, path, function(success)
+                coverPending[mediaId] = nil
+                if success then
+                    coverPaths[mediaId] = path
+                    render()
+                end
+            end)
+        end
+    end
 
-local function loadActivityPage()
-    local savedToken = noctalia.state.get("anilist_token")
-    if not savedToken or savedToken == "" then
+    if coverPaths[mediaId] then
+        return ui.image({ width = COVER_SIZE, height = COVER_SIZE, path = coverPaths[mediaId], fit = "cover", radius = 6 })
+    end
+    return ui.box({ width = COVER_SIZE, height = COVER_SIZE, fill = "surface_variant", radius = 6 })
+end
+
+-- ── AniList sync ─────────────────────────────────────────────────────────────
+
+local function loadPage()
+    if not savedToken() then
         noctalia.notify("AniList", "Open the Anilist panel and click Log in with AniList")
         return
     end
 
-    fetchAniListGraphQL(savedToken, ACTIVITY_QUERY, { page = activityPage }, function(data)
-        if not (data and data.data and data.data.Page) then
+    gql(ACTIVITY_QUERY, { page = page }, function(data)
+        if not (data and data.Page) then
             noctalia.notifyError("AniList", "Failed to fetch activity.")
             return
         end
-
-        activities = data.data.Page.activities or {}
-
-        for _, activity in ipairs(activities) do
-            local cover = activity.media.coverImage and activity.media.coverImage.medium
-            downloadCover(activity.media.id or activity.id, cover)
-        end
-
+        activities = data.Page.activities or {}
         render()
     end)
 end
 
+-- Flips the like right away and rolls it back if AniList rejects it.
+local function toggleLike(activity)
+    if not savedToken() then return end
 
-local function isTitleLong(text, length)
-    local textTrimmed = ""
-    if string.len(text) > length then
-        textTrimmed = string.sub(text,1,length) .. "..."
-        return textTrimmed
-    end
-    return text
+    local wasLiked, oldCount = activity.isLiked, activity.likeCount or 0
+    activity.isLiked = not wasLiked
+    activity.likeCount = wasLiked and math.max(oldCount - 1, 0) or oldCount + 1
+    render()
+
+    gql(TOGGLE_LIKE, { id = activity.id }, function(data, res)
+        if data then return end
+
+        local parsed = res and res.body and noctalia.json.decode(res.body)
+        local reason = parsed and parsed.errors and parsed.errors[1] and parsed.errors[1].message
+        noctalia.notifyError("AniList Interaction Failed", reason or `Status: {res and res.status or "no response"}`)
+
+        activity.isLiked, activity.likeCount = wasLiked, oldCount
+        render()
+    end)
 end
 
+-- ── views ────────────────────────────────────────────────────────────────────
 
-local function renderActivityFeed()
-    local rows = {}
+local function activityRow(activity)
+    local media = activity.media
+    local title = truncate(media.title.english or media.title.romaji, MAX_TITLE_CHARS)
+    local progress = activity.progress and (" " .. activity.progress) or ""
 
-    for index, activity in ipairs(activities) do
-        local title = activity.media.title.english or activity.media.title.romaji
-        local trimmedTitle = isTitleLong(title, 40)
-
-        local slot = index - 1
-        local callbackName = likeCallbackNames[slot + 1]
-
-        local coverId = activity.media.id or activity.id
-        local coverPath = coverPaths[coverId]
-
-        local progressText = activity.progress and (" " .. activity.progress) or ""
-
-        local coverWidget
-        if coverPath then
-            coverWidget = ui.image({
-                width = COVER_SIZE,
-                height = COVER_SIZE,
-                path = coverPath,
-                fit = "cover",
-                radius = 6,
-            })
-        else
-            coverWidget = ui.box({
-                width = COVER_SIZE,
-                height = COVER_SIZE,
-                fill = "surface_variant",
-                radius = 6,
-            })
-        end
-
-        table.insert(rows, ui.row({
-        padding = 10,
-        border = "outline",
-        borderWidth = 1,
-        radius = 8,
-        justify = "space_between",
-        align = "center",
-        }, {
-
-        
+    return ui.row({ padding = 10, border = "outline", borderWidth = 1, radius = 8, justify = "space_between", align = "center" }, {
         ui.row({ align = "center", gap = 10 }, {
-            coverWidget,
-            ui.label({
-                text = activity.user.name .. " " .. activity.status .. progressText .. ":" .. "\n" .. trimmedTitle,
-            }),
+            cover(media.id, media.coverImage and media.coverImage.medium),
+            ui.label({ text = `{activity.user.name} {activity.status}{progress}:\n{title}` }),
         }),
-
         ui.row({ align = "center", gap = 6 }, {
             ui.label({ text = tostring(activity.likeCount) }),
             ui.button({
                 glyph = activity.isLiked and "heart-filled" or "heart",
-                onClick = callbackName,
+                onClick = function() toggleLike(activity) end,
             }),
-        })
-
-    }))
-    end
-
-    return ui.scroll({ flexGrow = 1, gap = 8, }, rows)
+        }),
+    })
 end
-
 
 function render()
-    panel.render(ui.column({ flexGrow = 1, gap = 12, }, {
+    local rows = {}
+    for _, activity in ipairs(activities) do
+        table.insert(rows, activityRow(activity))
+    end
+
+    panel.render(ui.column({ flexGrow = 1, gap = 12 }, {
         ui.row({ justify = "space_between" }, {
-            ui.button({glyph = "arrow-narrow-left", onClick = "goToTracker"}),
+            ui.button({ glyph = "arrow-narrow-left", onClick = "goToTracker" }),
             ui.button({ glyph = "close", onClick = "onCloseClicked" }),
         }),
-
-        renderActivityFeed(),
-
+        ui.scroll({ flexGrow = 1, gap = 8 }, rows),
         ui.row({ align = "center", justify = "center", gap = 10 }, {
-            ui.button({ glyph = "caret-left", enabled = activityPage > 1, onClick = "previousActivityPage" }),
-            ui.label({ text = tostring(activityPage)}),
-            ui.button({ glyph = "caret-right", onClick = "nextActivityPage" }),
+            ui.button({ glyph = "caret-left", enabled = page > 1, onClick = "previousPage" }),
+            ui.label({ text = tostring(page) }),
+            ui.button({ glyph = "caret-right", onClick = "nextPage" }),
         }),
     }))
 end
 
+-- ── lifecycle and handlers ───────────────────────────────────────────────────
 
 function onOpen(context)
-    activityPage = 1
-    loadActivityPage()
+    page = 1
+    loadPage()
     render()
 end
 
-
-function nextActivityPage()
-    activityPage = activityPage + 1
-    loadActivityPage()
+function nextPage()
+    page += 1
+    loadPage()
 end
 
-function previousActivityPage()
-    if activityPage > 1 then
-        activityPage = activityPage - 1
-        loadActivityPage()
-    end
+function previousPage()
+    if page <= 1 then return end
+    page -= 1
+    loadPage()
 end
 
+function goToTracker()
+    noctalia.togglePanel(LIST_PANEL)
+end
 
 function onCloseClicked()
     panel.close()
 end
-
-
-function goToTracker()
-    noctalia.togglePanel("HotZi/anilistTracker:anilistPanel")
-end
-
-
-function onLike0() onLikeAt(0) end
-function onLike1() onLikeAt(1) end
-function onLike2() onLikeAt(2) end
-function onLike3() onLikeAt(3) end
-function onLike4() onLikeAt(4) end
-function onLike5() onLikeAt(5) end
-function onLike6() onLikeAt(6) end
-function onLike7() onLikeAt(7) end
-function onLike8() onLikeAt(8) end
-function onLike9() onLikeAt(9) end
-function onLike10() onLikeAt(10) end
-function onLike11() onLikeAt(11) end
-function onLike12() onLikeAt(12) end
-function onLike13() onLikeAt(13) end
-function onLike14() onLikeAt(14) end
-function onLike15() onLikeAt(15) end
-function onLike16() onLikeAt(16) end
-function onLike17() onLikeAt(17) end
-function onLike18() onLikeAt(18) end
-function onLike19() onLikeAt(19) end

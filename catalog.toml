@@ -5,11 +5,11 @@
 [[plugin]]
 id = "HotZi/anilistTracker"
 name = "Anilist Tracker"
-version = "1.1.0"
-updated_at = 1791139693
+version = "1.1.1"
+updated_at = 1791140831
 added_at = 1783190922
 author = "HotZi"
 icon = "device-tv"
 description = "Track your AniList anime from the bar, with a list panel and an activity feed."
-plugin_api = 3
+plugin_api = 9
 tags = ["media", "bar", "panel"]
