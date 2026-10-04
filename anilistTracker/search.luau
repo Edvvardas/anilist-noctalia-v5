@@ -38,6 +38,11 @@ local detailSeq = 0
 local detailTab = "Overview"
 local descExpanded = false
 local backStack = {}
+-- true when the main panel's Details button opened the current page, so Back
+-- returns to the list instead of the search page
+local openedFromList = false
+
+local LIST_PANEL = "HotZi/anilistTracker:anilistPanel"
 
 local images = {}
 local imagePending = {}
@@ -421,6 +426,7 @@ local function renderSearch()
 
     return ui.column({ flexGrow = 1, gap = 10, align = "stretch" }, {
         ui.row({ gap = 8, align = "center" }, {
+            ui.button({ glyph = "arrow-left", tooltip = "Back to your list", onClick = "onBackToList" }),
             ui.input({
                 key = "search-input",
                 value = query,
@@ -731,7 +737,11 @@ local tabHandlers = {
 
 local function renderDetail()
     local topBar = ui.row({ align = "center", justify = "space_between" }, {
-        ui.button({ glyph = "arrow-left", text = #backStack > 0 and "Back" or "Search", onClick = "onBackClicked" }),
+        ui.button({
+            glyph = "arrow-left",
+            text = (#backStack > 0 or openedFromList) and "Back" or "Search",
+            onClick = "onBackClicked",
+        }),
         ui.button({ glyph = "close", onClick = "onCloseClicked" }),
     })
 
@@ -791,6 +801,7 @@ function onOpen(context)
     if requested then
         noctalia.state.set("anilist_open_media", nil)
         backStack = {}
+        openedFromList = true
         view = "detail"
         loadDetail(requested)
     end
@@ -812,6 +823,7 @@ function onIpc(event, payload)
         runSearch()
     elseif event == "open" and tonumber(payload) then
         backStack = {}
+        openedFromList = false
         view = "detail"
         loadDetail(tonumber(payload))
     end
@@ -836,11 +848,21 @@ function onBackClicked()
     local previous = table.remove(backStack)
     if previous then
         loadDetail(previous)
+    elseif openedFromList then
+        onBackToList()
     else
         view = "search"
         media = nil
         render()
     end
+end
+
+function onBackToList()
+    -- reset so the next open from the search button starts on the search page
+    openedFromList = false
+    view = "search"
+    media = nil
+    noctalia.togglePanel(LIST_PANEL)
 end
 
 function onTabOverview() detailTab = "Overview"; render() end
