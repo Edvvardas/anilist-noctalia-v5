@@ -435,7 +435,7 @@ local function renderSearch()
                 onChange = "onQueryChange",
                 onSubmit = "onQuerySubmit",
             }),
-            ui.button({ glyph = "search", variant = "primary", onClick = "onQuerySubmit" }),
+            ui.button({ glyph = "search", variant = "primary", onClick = "onSearchClicked" }),
             ui.button({ glyph = "close", onClick = "onCloseClicked" }),
         }),
         ui.label({ text = heading, fontSize = 15, fontWeight = "bold", color = "primary" }),
@@ -832,11 +832,18 @@ end
 -- ── handlers ─────────────────────────────────────────────────────────────────
 
 function onQueryChange(value)
-    query = value or ""
+    if type(value) == "string" then query = value end
 end
 
+-- Enter in the search field; the host passes the field's text
 function onQuerySubmit(value)
     if type(value) == "string" then query = value end
+    runSearch()
+end
+
+-- The search button passes its own argument, not the field's text, so it must
+-- not touch `query`; onQueryChange keeps that in sync while typing.
+function onSearchClicked()
     runSearch()
 end
 
