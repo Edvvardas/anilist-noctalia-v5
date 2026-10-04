@@ -451,7 +451,7 @@ local function infoRow(label, value)
     if value == nil or value == "" then return nil end
     return ui.row({ gap = 8 }, {
         ui.label({ text = label, fontSize = 13, color = "on_surface_variant", width = 110 }),
-        ui.label({ text = tostring(value), fontSize = 13, maxWidth = TEXT_WIDTH - 110, wrap = true }),
+        ui.label({ text = tostring(value), fontSize = 13, maxWidth = TEXT_WIDTH - 110 }),
     })
 end
 
@@ -467,7 +467,7 @@ local function chips(items)
             table.insert(rows, ui.row({ gap = 6 }, current))
             current, width = {}, 0
         end
-        table.insert(current, ui.box({ padding = { left = 8, right = 8, top = 3, bottom = 3 }, radius = 10, fill = "surface_variant" }, {
+        table.insert(current, ui.row({ padding = { left = 8, right = 8, top = 3, bottom = 3 }, radius = 10, fill = "surface_variant" }, {
             ui.label({ text = text, fontSize = 12 }),
         }))
         width += w
@@ -558,7 +558,7 @@ local function renderHeader()
     return ui.row({ gap = 14, align = "start" }, {
         image(MEDIA_DIR, `{m.id}_large`, m.coverImage and m.coverImage.large, COVER_W, COVER_H, 8),
         ui.column({ gap = 6, flexGrow = 1, minWidth = 0 }, compact(
-            ui.label({ text = titleOf(m), fontSize = 18, fontWeight = "bold", maxLines = 2, maxWidth = TEXT_WIDTH, wrap = true }),
+            ui.label({ text = titleOf(m), fontSize = 18, fontWeight = "bold", maxLines = 2, maxWidth = TEXT_WIDTH }),
             (m.title.native and ui.label({ text = m.title.native, fontSize = 13, color = "on_surface_variant", maxLines = 1 })) or nil,
             ui.label({ text = table.concat(meta, " · "), fontSize = 13 }),
             ui.label({ text = table.concat(scoreLine, "   "), fontSize = 13 }),
@@ -579,7 +579,6 @@ local function renderOverview()
         table.insert(children, ui.label({
             text = description,
             fontSize = 13,
-            wrap = true,
             maxWidth = TEXT_WIDTH + 100,
             maxLines = (not descExpanded) and 5 or nil,
         }))
