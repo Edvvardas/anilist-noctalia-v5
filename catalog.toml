@@ -1,0 +1,15 @@
+# Noctalia plugins catalog.
+# Index of every plugin this source ships. Keep one [[plugin]] row per plugin
+# subdirectory, in sync with that plugin's plugin.toml.
+
+[[plugin]]
+id = "HotZi/anilistTracker"
+name = "Anilist Tracker"
+version = "1.0.4"
+updated_at = 1783194067
+added_at = 1783190922
+author = "HotZi"
+icon = "device-tv"
+description = "Track your AniList anime from the bar, with a list panel and an activity feed."
+plugin_api = 3
+tags = ["media", "bar", "panel"]
