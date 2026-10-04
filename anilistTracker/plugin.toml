@@ -24,7 +24,7 @@ entry = "widget.luau"
 id = "anilistPanel"
 entry = "panel.luau"
 width = 520
-height = 370
+height = 480
 placement = "attached"
 position = "auto"
 
