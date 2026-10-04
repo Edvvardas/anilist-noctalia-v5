@@ -314,7 +314,7 @@ local function fetchAniList(token)
                             id
                             progress
                             score
-                            media { title { english romaji } 
+                            media { id title { english romaji } 
                             episodes
                             status
                             nextAiringEpisode {
@@ -360,6 +360,7 @@ local function fetchAniList(token)
                                     local cover = entry.media.coverImage and entry.media.coverImage.medium
                                         table.insert(animeData[uiKey], {
                                             id = entry.id,
+                                            mediaId = entry.media.id,
                                             name = name,
                                             progress = entry.progress or 0,
                                             episodes = entry.media.episodes or 0,
@@ -390,6 +391,16 @@ local function fetchAniList(token)
             noctalia.notifyError("AniList Sync Failed", "Could not reach AniList.")
         end
     end)
+end
+
+-- builds a child list, skipping nils so optional widgets don't leave holes
+local function compact(...)
+    local out = {}
+    for i = 1, select("#", ...) do
+        local child = select(i, ...)
+        if child ~= nil then table.insert(out, child) end
+    end
+    return out
 end
 
 -- total anime count n selected status
@@ -537,7 +548,7 @@ local function renderList(statusKey)
 
         ui.row({ align = "center", gap = 12 }, {
             coverWidget,
-            ui.column({ gap = 6 }, {
+            ui.column({ gap = 6 }, compact(
                 ui.label({
                     text = selectedItem.name,
                     fontSize = 16,
@@ -548,9 +559,9 @@ local function renderList(statusKey)
                     fontSize = 14,
                 }),
                 isEpisodeAiring(selectedItem.status, selectedItem.nextAiringEpisode),
-                isAnimeRated(selectedItem.score)
-
-            }),
+                isAnimeRated(selectedItem.score),
+                ui.button({ glyph = "info-circle", text = "Details", variant = "ghost", onClick = "onOpenDetails" })
+            )),
         }),
         
 
@@ -659,6 +670,7 @@ function render()
     ui.row({ align = "stretch", justify = "space_between" }, {
       ui.select({ options = currentStatus, selectedIndex = selectedIndex, onChange = "onToggle", width = 320}),
        ui.row({justify = "space_between", gap = 10 }, {
+            ui.button({ glyph = "search", onClick = "goToSearch" }),
             ui.button({ glyph = "activity", onClick = "goToActivity" }),
             ui.button({ glyph = "logout", onClick = "onLogoutClicked" }),
             ui.button({ glyph = "close", onClick = "onCloseClicked" }),
@@ -760,6 +772,18 @@ end
 
 function onCloseClicked() 
     panel.close() 
+end
+
+function goToSearch()
+    noctalia.togglePanel("HotZi/anilistTracker:searchPanel")
+end
+
+function onOpenDetails()
+    local list = animeData[currentStatus[selectedIndex + 1]] or {}
+    local item = list[selectedAnimeIndex + 1]
+    if not item or not item.mediaId then return end
+    noctalia.state.set("anilist_open_media", item.mediaId)
+    noctalia.togglePanel("HotZi/anilistTracker:searchPanel")
 end
 
 function goToActivity()

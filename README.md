@@ -13,6 +13,9 @@ An [AniList](https://anilist.co) anime tracking plugin for [Noctalia](https://gi
 - Increment or decrement episode progress with a click, synced straight to your AniList profile
 - Move an entry between statuses (e.g. Watching → Completed) directly from the panel
 - Remembers your last selected tab and entry between sessions
+- Search AniList and open any anime's full page: info, description, genres, tags, rankings,
+  characters with voice actors, relations, and recommendations
+- Add anime to your list, change status, progress, and score, or favourite it, right from its page
 
 ## Requirements
 

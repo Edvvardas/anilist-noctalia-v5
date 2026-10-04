@@ -5,8 +5,8 @@
 [[plugin]]
 id = "HotZi/anilistTracker"
 name = "Anilist Tracker"
-version = "1.0.5"
-updated_at = 1791139071
+version = "1.1.0"
+updated_at = 1791139693
 added_at = 1783190922
 author = "HotZi"
 icon = "device-tv"

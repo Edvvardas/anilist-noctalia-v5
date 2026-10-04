@@ -1,6 +1,6 @@
 id = "HotZi/anilistTracker"
 name = "Anilist Tracker"
-version = "1.0.5"
+version = "1.1.0"
 plugin_api = 3
 min_noctalia = "5.0.0"
 author = "HotZi"
@@ -36,4 +36,12 @@ width = 520
 height = 370
 placement = "attached"
 position = "auto"
-    
+
+
+[[panel]]
+id = "searchPanel"
+entry = "search.luau"
+width = 600
+height = 620
+placement = "attached"
+position = "auto"
