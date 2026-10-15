@@ -5,6 +5,12 @@ local loginRunning = false
 local lastLoginRequest = noctalia.state.get("anilist_login_request")
 local lastConfigToken = nil
 
+-- noctalia.state is in-memory only, so keep the token in a file to stay logged in
+-- across restarts.
+local TOKEN_DIR = (noctalia.getenv("XDG_STATE_HOME") or ((noctalia.getenv("HOME") or "") .. "/.local/state"))
+    .. "/noctalia/anilist"
+local TOKEN_FILE = TOKEN_DIR .. "/token"
+
 -- A login can't survive a restart, so don't leave the panel stuck on "waiting".
 if noctalia.state.get("anilist_login_status") == "waiting" then
     noctalia.state.set("anilist_login_status", "")
@@ -13,6 +19,35 @@ end
 local function shellQuote(s)
     return "'" .. string.gsub(s, "'", "'\\''") .. "'"
 end
+
+local persistedToken = noctalia.string.trim(noctalia.readFile(TOKEN_FILE) or "")
+if persistedToken ~= "" then
+    local current = noctalia.state.get("anilist_token")
+    if type(current) ~= "string" or noctalia.string.trim(current) == "" then
+        noctalia.state.set("anilist_token", persistedToken)
+    end
+end
+
+local function persistToken(token)
+    if type(token) ~= "string" then token = "" end
+    token = noctalia.string.trim(token)
+    if token == persistedToken then return end
+    persistedToken = token
+
+    if token == "" then
+        noctalia.removeFile(TOKEN_FILE)
+        return
+    end
+    noctalia.mkdirAll(TOKEN_DIR)
+    if noctalia.writeFile(TOKEN_FILE, token) then
+        noctalia.runAsync("chmod 600 " .. shellQuote(TOKEN_FILE))
+    else
+        noctalia.log("anilistTracker: could not save token to " .. TOKEN_FILE)
+    end
+end
+
+noctalia.state.watch("anilist_token", persistToken)
+persistToken(noctalia.state.get("anilist_token"))
 
 local function finishLogin(status)
     loginRunning = false
