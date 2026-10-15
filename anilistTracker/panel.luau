@@ -317,7 +317,7 @@ local function renderSelected(list)
                 ui.label({ text = "Anime Status: " .. anime.airingStatus, fontSize = 14 }),
                 airingLabel(anime),
                 scoreLabel(anime.score),
-                ui.button({ glyph = "info-circle", text = "Details", variant = "ghost", onClick = "onOpenDetails" })
+                ui.button({ glyph = "info-circle", text = "Details", variant = "primary", onClick = "onOpenDetails" })
             )),
         }),
 
