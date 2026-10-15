@@ -637,9 +637,13 @@ local function renderOverview()
     for _, d in ipairs(distribution) do totalUsers += d.amount end
     if totalUsers > 0 then
         local bars = {}
+        -- Labels size to their text and ignore width, so a fixed-width box holds the
+        -- status name and every bar starts at the same x.
         for _, d in ipairs(distribution) do
             table.insert(bars, ui.row({ gap = 8, align = "center" }, {
-                ui.label({ text = API_TO_STATUS[d.status] or prettyEnum(d.status), fontSize = 12, width = 80 }),
+                ui.box({ width = 80 }, {
+                    ui.label({ text = API_TO_STATUS[d.status] or prettyEnum(d.status), fontSize = 12 }),
+                }),
                 ui.progress({ progress = d.amount / totalUsers, width = 260, height = 6, radius = 3 }),
                 ui.label({ text = tostring(d.amount), fontSize = 12, color = "on_surface_variant" }),
             }))
