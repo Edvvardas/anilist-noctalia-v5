@@ -107,6 +107,22 @@ local function formatCountdown(seconds)
     return `{days}d {hours}h {minutes}m`
 end
 
+-- maxLines doesn't shorten the description label, so collapse it by hand: about
+-- five lines' worth, ending at a paragraph or word break.
+local DESC_PREVIEW_CHARS = 400
+
+local function descriptionPreview(text)
+    if #text <= DESC_PREVIEW_CHARS then return text, false end
+    local cut = string.sub(text, 1, DESC_PREVIEW_CHARS)
+    local paragraphEnd = string.find(cut, "\n\n", DESC_PREVIEW_CHARS // 2, true)
+    if paragraphEnd then
+        cut = string.sub(cut, 1, paragraphEnd - 1)
+    else
+        cut = string.match(cut, "^(.*)%s") or cut
+    end
+    return noctalia.string.trim(cut) .. "…", true
+end
+
 local function cleanDescription(text)
     if type(text) ~= "string" then return "" end
     text = string.gsub(text, "<br%s*/?>", "\n")
@@ -589,18 +605,20 @@ local function renderOverview()
 
     local description = cleanDescription(m.description)
     if description ~= "" then
+        local preview, shortened = descriptionPreview(description)
         table.insert(children, sectionTitle("Description"))
         table.insert(children, ui.label({
-            text = description,
+            text = descExpanded and description or preview,
             fontSize = 13,
             maxWidth = TEXT_WIDTH + 100,
-            maxLines = (not descExpanded) and 5 or nil,
         }))
-        table.insert(children, ui.button({
-            text = descExpanded and "Show less" or "Show more",
-            variant = "ghost",
-            onClick = "onToggleDescription",
-        }))
+        if shortened then
+            table.insert(children, ui.button({
+                text = descExpanded and "Show less" or "Show more",
+                variant = "ghost",
+                onClick = "onToggleDescription",
+            }))
+        end
     end
 
     table.insert(children, sectionTitle("Information"))
