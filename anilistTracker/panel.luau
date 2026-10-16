@@ -21,8 +21,19 @@ local STATUS_BUTTONS = {
     { "Repeating", "repeat" },
 }
 
+-- Icon and hover text for AniList's airing status of the selected anime.
+local AIRING_STATUS = {
+    RELEASING = { "broadcast", "Releasing" },
+    FINISHED = { "circle-check", "Finished" },
+    NOT_YET_RELEASED = { "calendar-time", "Not yet released" },
+    HIATUS = { "player-pause", "On hiatus" },
+    CANCELLED = { "circle-x", "Cancelled" },
+}
+
 local MAX_TITLE_CHARS = 50
 local COVER_SIZE = 96
+-- Room left for the title next to the cover and the airing status icon.
+local TITLE_WIDTH = 300
 local COVER_DIR = (noctalia.getenv("XDG_STATE_HOME") or ((noctalia.getenv("HOME") or "") .. "/.local/state"))
     .. "/noctalia/anilist/covers/media"
 
@@ -65,6 +76,7 @@ local statusIndex = 0 -- 0-based, matches ui.select
 local animeIndex = 0
 local needsLogin = false -- no token, or AniList rejected the saved one
 local panelOpen = false
+local airingStatusHovered = false -- panel ui has no tooltips, so hover text is drawn by hand
 
 local coverPaths = {}
 local coverPending = {}
@@ -282,6 +294,30 @@ local function airingLabel(anime)
     return ui.label({ text = `Episode: {upcoming.episode} in {days}d {hours}h {minutes}m`, fontSize = 14 })
 end
 
+local function setAiringStatusHovered(hovered)
+    if airingStatusHovered == hovered then return end
+    airingStatusHovered = hovered
+    render()
+end
+
+local function airingStatusEntry(status)
+    return AIRING_STATUS[status] or { "help-circle", "Unknown status" }
+end
+
+local function airingStatusIcon(status)
+    return ui.button({
+        glyph = airingStatusEntry(status)[1],
+        variant = "ghost",
+        -- onHover passes the state as the string "true" / "false".
+        onHover = function(hovered) setAiringStatusHovered(hovered == "true" or hovered == true) end,
+    })
+end
+
+local function airingStatusHint(status)
+    if not airingStatusHovered then return nil end
+    return ui.label({ text = airingStatusEntry(status)[2], fontSize = 12, color = "on_surface_variant" })
+end
+
 local function scoreLabel(score)
     return ui.label({ text = score == 0 and "Not rated yet" or `Your score: {score}` })
 end
@@ -313,8 +349,11 @@ local function renderSelected(list)
         ui.row({ align = "center", gap = 12 }, {
             cover(anime.mediaId, anime.coverUrl),
             ui.column({ gap = 6 }, compact(
-                ui.label({ text = anime.name, fontSize = 16, fontWeight = "bold" }),
-                ui.label({ text = "Anime Status: " .. anime.airingStatus, fontSize = 14 }),
+                ui.row({ align = "center", gap = 6 }, {
+                    ui.label({ text = anime.name, fontSize = 16, fontWeight = "bold", maxLines = 2, maxWidth = TITLE_WIDTH }),
+                    airingStatusIcon(anime.airingStatus),
+                }),
+                airingStatusHint(anime.airingStatus),
                 airingLabel(anime),
                 scoreLabel(anime.score),
                 ui.button({ glyph = "info-circle", text = "Details", variant = "primary", onClick = "onOpenDetails" })
