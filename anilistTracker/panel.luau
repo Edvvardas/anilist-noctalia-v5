@@ -11,14 +11,14 @@ local STATUS_FROM_API = {
 local STATUS_TO_API = {}
 for api, name in pairs(STATUS_FROM_API) do STATUS_TO_API[name] = api end
 
--- Order and icons of the status buttons under the selected anime.
-local STATUS_BUTTONS = {
-    { "Watching", "player-play" },
-    { "Planning", "clock" },
-    { "Completed", "checks" },
-    { "Dropped", "trash" },
-    { "Paused", "player-pause" },
-    { "Repeating", "repeat" },
+-- Icons for the list tabs and the "move to" buttons.
+local STATUS_GLYPHS = {
+    Watching = "player-play",
+    Planning = "clock",
+    Completed = "checks",
+    Repeating = "repeat",
+    Paused = "player-pause",
+    Dropped = "trash",
 }
 
 -- Icon and hover text for AniList's airing status of the selected anime.
@@ -31,9 +31,9 @@ local AIRING_STATUS = {
 }
 
 local MAX_TITLE_CHARS = 50
-local COVER_SIZE = 96
--- Room left for the title next to the cover and the airing status icon.
-local TITLE_WIDTH = 300
+local COVER_W, COVER_H = 40, 56
+-- Room for an entry's text next to its cover.
+local TEXT_WIDTH = 340
 local COVER_DIR = (noctalia.getenv("XDG_STATE_HOME") or ((noctalia.getenv("HOME") or "") .. "/.local/state"))
     .. "/noctalia/anilist/covers/media"
 
@@ -75,6 +75,7 @@ for _, name in ipairs(STATUSES) do animeByStatus[name] = {} end
 local statusIndex = 0 -- 0-based, matches ui.select
 local animeIndex = 0
 local needsLogin = false -- no token, or AniList rejected the saved one
+local listsLoaded = false
 local panelOpen = false
 local airingStatusHovered = false -- panel ui has no tooltips, so hover text is drawn by hand
 
@@ -130,20 +131,21 @@ local function cover(mediaId, url)
         else
             noctalia.mkdirAll(COVER_DIR)
             coverPending[mediaId] = true
-            noctalia.download(url, path, function(success)
+            local started = noctalia.download(url, path, function(success)
                 coverPending[mediaId] = nil
-                if success then
-                    coverPaths[mediaId] = path
-                    render()
-                end
+                if success then coverPaths[mediaId] = path end
+                render()
             end)
+            -- Only a few downloads run at once; a refused one is retried on the
+            -- render that the next finished download triggers.
+            if not started then coverPending[mediaId] = nil end
         end
     end
 
     if coverPaths[mediaId] then
-        return ui.image({ width = COVER_SIZE, height = COVER_SIZE, path = coverPaths[mediaId], fit = "cover", radius = 6 })
+        return ui.image({ width = COVER_W, height = COVER_H, path = coverPaths[mediaId], fit = "cover", radius = 4 })
     end
-    return ui.box({ width = COVER_SIZE, height = COVER_SIZE, fill = "surface_variant", radius = 6 })
+    return ui.box({ width = COVER_W, height = COVER_H, fill = "surface_variant", radius = 4 })
 end
 
 local function currentStatus()
@@ -225,6 +227,7 @@ local function fetchLists()
                 return
             end
             storeLists(listData.MediaListCollection.lists)
+            listsLoaded = true
             restoreSelection()
             render()
         end)
@@ -283,7 +286,8 @@ end
 
 -- ── views ────────────────────────────────────────────────────────────────────
 
-local function airingLabel(anime)
+-- "Ep 5 in 2d 3h" while the show is airing, else nil.
+local function airingCountdown(anime)
     local upcoming = anime.nextAiringEpisode
     if anime.airingStatus ~= "RELEASING" or not upcoming then return nil end
 
@@ -291,7 +295,15 @@ local function airingLabel(anime)
     local days = math.floor(seconds / 86400)
     local hours = math.floor(seconds % 86400 / 3600)
     local minutes = math.floor(seconds % 3600 / 60)
-    return ui.label({ text = `Episode: {upcoming.episode} in {days}d {hours}h {minutes}m`, fontSize = 14 })
+    local wait = days > 0 and `{days}d {hours}h` or `{hours}h {minutes}m`
+    return `Ep {upcoming.episode} in {wait}`
+end
+
+local function metaLine(anime)
+    local parts = { anime.episodes > 0 and `{anime.progress}/{anime.episodes} ep` or `{anime.progress} ep` }
+    if anime.score > 0 then table.insert(parts, `★ {anime.score}`) end
+    table.insert(parts, airingCountdown(anime))
+    return table.concat(parts, " · ")
 end
 
 local function setAiringStatusHovered(hovered)
@@ -318,64 +330,106 @@ local function airingStatusHint(status)
     return ui.label({ text = airingStatusEntry(status)[2], fontSize = 12, color = "on_surface_variant" })
 end
 
-local function scoreLabel(score)
-    return ui.label({ text = score == 0 and "Not rated yet" or `Your score: {score}` })
+local function selectStatus(index)
+    statusIndex = index
+    noctalia.state.set("anilist_selected_status", statusIndex)
+    restoreSelection()
+    airingStatusHovered = false
+    render()
 end
 
-local function statusButton(status, glyph)
-    return ui.button({
-        glyph = glyph,
-        variant = currentStatus() == status and "primary" or "outline",
-        onClick = function() moveSelectedTo(status) end,
+local function selectAnime(index)
+    if animeIndex == index then return end
+    animeIndex = index
+    rememberSelection()
+    airingStatusHovered = false
+    render()
+end
+
+local function statusTab(index, name)
+    local selected = statusIndex == index - 1
+    local props = {
+        glyph = STATUS_GLYPHS[name],
+        variant = selected and "primary" or "ghost",
+        onClick = function() selectStatus(index - 1) end,
+    }
+    if selected then props.text = `{name}  {#animeByStatus[name]}` end
+    return ui.button(props)
+end
+
+-- Cover, title, progress line and bar; the selected entry also gets its airing icon.
+local function entrySummary(anime, index, selected)
+    return ui.row({ gap = 10, align = "center", onClick = function() selectAnime(index - 1) end }, {
+        cover(anime.mediaId, anime.coverUrl),
+        ui.column({ gap = 4, flexGrow = 1, minWidth = 0 }, compact(
+            ui.row({ align = "center", gap = 4 }, compact(
+                ui.label({
+                    text = anime.name,
+                    fontSize = 13,
+                    fontWeight = "bold",
+                    maxLines = selected and 2 or 1,
+                    maxWidth = TEXT_WIDTH,
+                }),
+                selected and airingStatusIcon(anime.airingStatus) or nil
+            )),
+            selected and airingStatusHint(anime.airingStatus) or nil,
+            ui.label({ text = metaLine(anime), fontSize = 12, color = "on_surface_variant", maxLines = 1 }),
+            anime.episodes > 0
+                and ui.progress({ progress = anime.progress / anime.episodes, width = TEXT_WIDTH, height = 4, radius = 2 })
+                or nil
+        )),
     })
 end
 
-local function renderSelected(list)
-    local options = {}
-    for i, anime in ipairs(list) do
-        table.insert(options, `{i}. {anime.name} ({anime.progress} ep)`)
-    end
-    animeIndex = math.min(animeIndex, #list - 1)
-    local anime = list[animeIndex + 1]
-
-    local statusButtons = {}
-    for _, button in ipairs(STATUS_BUTTONS) do
-        table.insert(statusButtons, statusButton(button[1], button[2]))
+local function entryControls(anime)
+    local moveButtons = {}
+    for _, name in ipairs(STATUSES) do
+        table.insert(moveButtons, ui.button({
+            glyph = STATUS_GLYPHS[name],
+            variant = currentStatus() == name and "primary" or "outline",
+            onClick = function() moveSelectedTo(name) end,
+        }))
     end
 
-    return ui.column({ gap = 12 }, {
-        ui.select({ options = options, selectedIndex = animeIndex, onChange = "onAnimeSelect", width = 320 }),
-
-        ui.row({ align = "center", gap = 12 }, {
-            cover(anime.mediaId, anime.coverUrl),
-            ui.column({ gap = 6 }, compact(
-                ui.row({ align = "center", gap = 6 }, {
-                    ui.label({ text = anime.name, fontSize = 16, fontWeight = "bold", maxLines = 2, maxWidth = TITLE_WIDTH }),
-                    airingStatusIcon(anime.airingStatus),
-                }),
-                airingStatusHint(anime.airingStatus),
-                airingLabel(anime),
-                scoreLabel(anime.score),
-                ui.button({ glyph = "info-circle", text = "Details", variant = "primary", onClick = "onOpenDetails" })
-            )),
-        }),
-
+    return ui.column({ gap = 8 }, {
         ui.row({ align = "center", justify = "space_between" }, {
-            ui.label({ text = "Change Status:", fontSize = 14 }),
-            ui.row({ align = "center", gap = 6 }, {
-                ui.label({ text = "⭐" }),
-                ui.input({ key = `score-{anime.id}`, placeholder = "Score", width = 80, onSubmit = setScore }),
-            }),
-        }),
-
-        ui.row({ align = "center", justify = "space_between" }, {
-            ui.row({ align = "center", gap = 6 }, statusButtons),
-            ui.row({ align = "center", gap = 10 }, {
+            ui.row({ align = "center", gap = 8 }, {
                 ui.button({ glyph = "minus", onClick = function() changeProgress(-1) end }),
-                ui.label({ text = `{anime.progress}/{anime.episodes}`, fontSize = 14 }),
+                ui.label({ text = `{anime.progress}/{anime.episodes > 0 and anime.episodes or "?"}`, fontSize = 14 }),
                 ui.button({ glyph = "plus", onClick = function() changeProgress(1) end }),
             }),
+            ui.row({ align = "center", gap = 6 }, {
+                ui.glyph({ name = "star", size = 14, color = "primary" }),
+                ui.input({
+                    key = `score-{anime.id}`,
+                    placeholder = anime.score > 0 and tostring(anime.score) or "Score",
+                    width = 80,
+                    onSubmit = setScore,
+                }),
+            }),
+            ui.button({ glyph = "info-circle", text = "Details", variant = "primary", onClick = "onOpenDetails" }),
         }),
+        ui.row({ align = "center", justify = "space_between" }, {
+            ui.label({ text = "Move to", fontSize = 12, color = "on_surface_variant" }),
+            ui.row({ align = "center", gap = 4 }, moveButtons),
+        }),
+    })
+end
+
+local function entryRow(anime, index)
+    if index - 1 ~= animeIndex then
+        return ui.column({ padding = 8, radius = 10 }, { entrySummary(anime, index, false) })
+    end
+    return ui.column({ gap = 10, padding = 8, radius = 10, fill = "surface_variant" }, {
+        entrySummary(anime, index, true),
+        entryControls(anime),
+    })
+end
+
+local function emptyState(text)
+    return ui.column({ flexGrow = 1, gap = 10, align = "center", justify = "center" }, {
+        ui.glyph({ name = STATUS_GLYPHS[currentStatus()] or "device-tv", size = 32, color = "on_surface_variant" }),
+        ui.label({ text = text, fontSize = 14, color = "on_surface_variant" }),
     })
 end
 
@@ -411,23 +465,42 @@ end
 
 local function renderLists()
     local list = animeByStatus[currentStatus()]
-    local content = #list > 0 and renderSelected(list)
-        or ui.label({ text = "No anime in this list yet.", fontSize = 14 })
+    animeIndex = math.min(animeIndex, math.max(#list - 1, 0))
 
-    return ui.column({ flexGrow = 1, gap = 12, align = "stretch" }, {
-        ui.row({ align = "stretch", justify = "space_between" }, {
-            ui.select({ options = STATUSES, selectedIndex = statusIndex, onChange = "onStatusSelect", width = 320 }),
-            ui.row({ justify = "space_between", gap = 10 }, {
+    local tabs = {}
+    for i, name in ipairs(STATUSES) do
+        table.insert(tabs, statusTab(i, name))
+    end
+
+    local body
+    if not listsLoaded then
+        body = emptyState("Loading your lists…")
+    elseif #list == 0 then
+        body = emptyState(`Nothing in {currentStatus()} yet.`)
+    else
+        local rows = {}
+        for i, anime in ipairs(list) do
+            table.insert(rows, entryRow(anime, i))
+        end
+        body = ui.scroll({ flexGrow = 1 }, { ui.column({ gap = 2 }, rows) })
+    end
+
+    return ui.column({ flexGrow = 1, gap = 10, align = "stretch" }, {
+        ui.row({ align = "center", justify = "space_between" }, {
+            ui.row({ align = "center", gap = 8 }, {
+                ui.glyph({ name = "device-tv", size = 18, color = "primary" }),
+                ui.label({ text = "AniList", fontSize = 15, fontWeight = "bold" }),
+            }),
+            ui.row({ align = "center", gap = 6 }, {
                 ui.button({ glyph = "search", onClick = "goToSearch" }),
                 ui.button({ glyph = "activity", onClick = "goToActivity" }),
                 ui.button({ glyph = "logout", onClick = "onLogoutClicked" }),
                 ui.button({ glyph = "close", onClick = "onCloseClicked" }),
             }),
         }),
-        ui.row({ padding = { top = 2, bottom = 2 } }, {
-            ui.label({ text = `{currentStatus()} ({#list})`, fontSize = 15, fontWeight = "bold", color = "primary" }),
-        }),
-        ui.scroll({ flexGrow = 1 }, { content }),
+        ui.row({ align = "center", gap = 4 }, tabs),
+        ui.separator({}),
+        body,
     })
 end
 
@@ -465,19 +538,6 @@ end
 
 -- ── handlers ─────────────────────────────────────────────────────────────────
 
-function onStatusSelect(index)
-    statusIndex = tonumber(index) or 0
-    noctalia.state.set("anilist_selected_status", statusIndex)
-    restoreSelection()
-    render()
-end
-
-function onAnimeSelect(index)
-    animeIndex = tonumber(index) or 0
-    rememberSelection()
-    render()
-end
-
 function onOpenDetails()
     local anime = selectedAnime()
     if not anime then return end
@@ -502,6 +562,7 @@ end
 function onLogoutClicked()
     noctalia.state.set("anilist_token", "")
     for _, name in ipairs(STATUSES) do animeByStatus[name] = {} end
+    listsLoaded = false
     needsLogin = true
     render()
 end
