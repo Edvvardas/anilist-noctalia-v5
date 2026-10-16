@@ -94,10 +94,12 @@ noctalia.state.watch("anilist_login_request", function(value)
     end
 end)
 
-local function render()
+local function render(context)
     noctalia.setUpdateInterval(1000)
+    local showLabel = context and context.settings and context.settings.show_label
+    if showLabel == nil then showLabel = noctalia.getConfig("show_label") end
     barWidget.setGlyph("device-tv")
-    barWidget.setText("Anilist")
+    barWidget.setText(showLabel == true and "Anilist" or "")
 end
 
 -- The manual token setting is a fallback. Apply it when it changes, or on start
@@ -120,7 +122,7 @@ local function syncConfigToken(context)
 end
 
 function update(context)
-    render()
+    render(context)
     syncConfigToken(context)
 end
 

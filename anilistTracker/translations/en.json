@@ -3,6 +3,10 @@
     "anilist_token": {
       "label": "AniList Access Token",
       "description": "Optional. Leave empty and use Log in with AniList in the panel instead."
+    },
+    "show_label": {
+      "label": "Show label",
+      "description": "Show \"Anilist\" next to the icon in the bar. Turn off to show only the icon."
     }
   }
 }
