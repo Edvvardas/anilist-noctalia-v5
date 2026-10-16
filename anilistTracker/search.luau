@@ -8,6 +8,8 @@ local COVER_DIR = (noctalia.getenv("XDG_STATE_HOME") or ((noctalia.getenv("HOME"
 -- panel caches covers under, so keep them in their own folders
 local MEDIA_DIR = COVER_DIR .. "/media"
 local CHAR_DIR = COVER_DIR .. "/characters"
+-- Shown for characters with no picture on AniList.
+local NO_IMAGE = (noctalia.pluginDir() or "") .. "/assets/noimage.jpg"
 
 local THUMB_W, THUMB_H = 46, 64
 local COVER_W, COVER_H = 120, 170
@@ -46,6 +48,7 @@ local LIST_PANEL = "HotZi/anilistTracker:anilistPanel"
 
 local images = {}
 local imagePending = {}
+local imageFailed = {}
 
 -- ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -141,28 +144,39 @@ local function gql(queryText, variables, callback)
     end)
 end
 
--- Downloads once into the cache and re-renders when it lands.
-local function image(dir, id, url, width, height, radius)
+-- Downloads once into the cache and re-renders when it lands. With a fallback,
+-- that image stands in when there's no url or the download fails.
+local function image(dir, id, url, width, height, radius, fallback)
     local key = `{dir}/{id}`
-    if url and url ~= "" and images[key] == nil and not imagePending[key] then
+    -- AniList points pictureless entries at its own placeholder (".../default.jpg").
+    local hasUrl = url ~= nil and url ~= "" and not (fallback and string.find(url, "/default%.jpg$"))
+    if hasUrl and images[key] == nil and not imagePending[key] and not imageFailed[key] then
         local path = `{dir}/{id}.jpg`
         if noctalia.fileExists(path) then
             images[key] = path
         else
             noctalia.mkdirAll(dir)
             imagePending[key] = true
-            noctalia.download(url, path, function(success)
+            local started = noctalia.download(url, path, function(success)
                 imagePending[key] = nil
                 if success then
                     images[key] = path
-                    render()
+                else
+                    imageFailed[key] = true
                 end
+                render()
             end)
+            -- Only a few downloads run at once; a refused one is retried on the
+            -- render that the next finished download triggers.
+            if not started then imagePending[key] = nil end
         end
     end
 
     if images[key] then
         return ui.image({ path = images[key], width = width, height = height, fit = "cover", radius = radius or 6 })
+    end
+    if fallback and (not hasUrl or imageFailed[key]) then
+        return ui.image({ path = fallback, width = width, height = height, fit = "cover", radius = radius or 6 })
     end
     return ui.box({ width = width, height = height, fill = "surface_variant", radius = radius or 6 })
 end
@@ -666,7 +680,7 @@ local function renderCharacters()
         local c = edge.node
         local va = edge.voiceActors and edge.voiceActors[1]
         table.insert(rows, ui.row({ gap = 10, align = "center" }, compact(
-            image(CHAR_DIR, c.id, c.image and c.image.medium, 40, 54, 4),
+            image(CHAR_DIR, c.id, c.image and c.image.medium, 40, 54, 4, NO_IMAGE),
             ui.column({ gap = 2, flexGrow = 1, minWidth = 0 }, {
                 ui.label({ text = c.name and c.name.full or "Unknown", fontSize = 13, fontWeight = "bold", maxLines = 1 }),
                 ui.label({ text = prettyEnum(edge.role) or "", fontSize = 12, color = "on_surface_variant" }),
