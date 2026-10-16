@@ -37,6 +37,8 @@ local searchSeq = 0
 local media = nil
 local loadingDetail = false
 local detailSeq = 0
+local charactersPage = 1
+local loadingCharacters = false
 local detailTab = "Overview"
 local descExpanded = false
 local backStack = {}
@@ -263,7 +265,8 @@ query ($id: Int) {
         node { id type format status title { english romaji } coverImage { medium } }
       }
     }
-    characters(sort: [ROLE, RELEVANCE, ID], perPage: 16) {
+    characters(sort: [ROLE, RELEVANCE, ID], perPage: 25) {
+      pageInfo { hasNextPage }
       edges {
         role
         node { id name { full } image { medium } }
@@ -318,6 +321,22 @@ local function loadTrending()
     end)
 end
 
+-- Later pages of the Characters tab; the first page comes with DETAIL_QUERY.
+local CHARACTERS_QUERY = [[
+query ($id: Int, $page: Int) {
+  Media(id: $id, type: ANIME) {
+    characters(sort: [ROLE, RELEVANCE, ID], perPage: 25, page: $page) {
+      pageInfo { hasNextPage }
+      edges {
+        role
+        node { id name { full } image { medium } }
+        voiceActors(language: JAPANESE, sort: [RELEVANCE, ID]) { name { full } }
+      }
+    }
+  }
+}
+]]
+
 local function loadDetail(id)
     detailSeq += 1
     local seq = detailSeq
@@ -325,6 +344,8 @@ local function loadDetail(id)
     media = nil
     descExpanded = false
     detailTab = "Overview"
+    charactersPage = 1
+    loadingCharacters = false
     render()
 
     gql(DETAIL_QUERY, { id = id }, function(data)
@@ -335,6 +356,34 @@ local function loadDetail(id)
         else
             noctalia.notifyError("AniList", "Could not load this anime.")
         end
+        render()
+    end)
+end
+
+local function loadMoreCharacters()
+    if loadingCharacters or not media then return end
+    local seq = detailSeq
+    loadingCharacters = true
+    render()
+
+    gql(CHARACTERS_QUERY, { id = media.id, page = charactersPage + 1 }, function(data)
+        if seq ~= detailSeq then return end
+        loadingCharacters = false
+        local more = data and data.Media and data.Media.characters
+        if not more then
+            noctalia.notifyError("AniList", "Could not load more characters.")
+            render()
+            return
+        end
+
+        charactersPage += 1
+        local edges = media.characters.edges
+        local seen = {}
+        for _, edge in ipairs(edges) do seen[edge.node.id] = true end
+        for _, edge in ipairs(more.edges or {}) do
+            if not seen[edge.node.id] then table.insert(edges, edge) end
+        end
+        media.characters.pageInfo = more.pageInfo
         render()
     end)
 end
@@ -705,6 +754,15 @@ local function renderCharacters()
             }),
             va and ui.label({ text = va.name.full, fontSize = 12, color = "on_surface_variant", maxLines = 1 }) or nil
         )))
+    end
+
+    local pageInfo = media.characters.pageInfo
+    if pageInfo and pageInfo.hasNextPage then
+        table.insert(rows, ui.button({
+            text = loadingCharacters and "Loading…" or "Show more characters",
+            variant = "ghost",
+            onClick = loadMoreCharacters,
+        }))
     end
     return rows
 end
